@@ -43,6 +43,34 @@ interested in∷
     this result should never occur and all results should be informative.
 -}
 
+
+
+-- ideally we want this where Int is the bowl we want to move. In essence, our input
+{-doMove :: Int -> Mancala -> (MoveResult, Mancala)
+doMove = runState . pickMoveProcessor
+
+pickMoveProcessor :: Int -> GameState MoveResult
+pickMoveProcessor = undefined
+-}
+{- On the other hand, we could also consider doMove as saying; bind this state processor
+
+doMove2 :: Int -- ^
+  -> GameState a -- ^
+  -> GameState MoveResult
+doMove2 i = (>> pickMoveProcessor i)
+-}
+-- The benefit of this latter approach is that the game is essentially replayable
+-- then when we return the GameState MoveResult;
+-- I think in the public api, we forego the use of the state monad, and just do simple
+-- query int mancala -> (MoveResult, Mancala)
+-- then we can use the state monad internally
+-- if there are any benefits, this should be clear while programming the internals
+-- and then we can hopefully decide.
+
+
+
+
+
 -- Random list rotate functions to have a 'circular' list, perhaps useful for
 -- the bowls later.
 rotateRight :: [a] -> [a]
