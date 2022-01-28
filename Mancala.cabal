@@ -29,6 +29,7 @@ library
       Mancala
       Mancala.Bowl
       Mancala.Internal
+      Playground
   other-modules:
       Paths_Mancala
   hs-source-dirs:

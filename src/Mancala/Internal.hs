@@ -33,46 +33,52 @@ getScore :: Player -> Mancala -> Int
 getScore One = playerOneScore
 getScore Two = playerTwoScore
 
-data MoveResult = GameAlreadyOver
-  | CantMoveEmptyBowl
-  | PassStones { idx :: Int, nstones :: Int }
-  | PlayerOneKalaha Int
-  | Ok
+data MoveResult = CantMoveEmptyBowl | Ok
   deriving (Show, Eq)
+
+data PassStones = PassStones Int Int
+newtype PlayerOneKalaha = PlayerOneKalaha Int
 
 doMove :: Int -> Mancala -> (MoveResult, Mancala)
 doMove i = runState (getMoveProcessor i)
 
+isValidMove :: Int -> Mancala -> Bool
+isValidMove n game = nstones /= 0
+  where nstones = getNumberOfStones $ getBowls game !! n
+
 getMoveProcessor :: Int -> GameState MoveResult
-getMoveProcessor i = doEmptyBowl i >>= passStones
+getMoveProcessor i = gameState $ \state ->
+  if isValidMove i state then
+    runState (doEmptyBowl i) state
+  else
+    (CantMoveEmptyBowl, state)
 
 doEmptyBowl :: Int -> GameState MoveResult
-doEmptyBowl i = gameState $ \state ->
+doEmptyBowl i = gameState (\state ->
   let nstones =  getNumberOfStones $ getBowls state !! i
-  in if nstones == 0 then
-       (CantMoveEmptyBowl, state)
-     else
-       (PassStones (i + 1) nstones, updateBowl i emptyBowl state)
+  in (PassStones (i + 1) nstones, updateBowl i emptyBowl state)
+  ) >>= passStones
 
-passStones :: MoveResult -> GameState MoveResult
+passStones :: PassStones -> GameState MoveResult
 passStones (PassStones _ 0) = setOutput Ok
 passStones (PassStones 5 nstones) = gameState (\state ->
   let nstate = updateBowl 5 (addStone (getBowls state !! 5)) state
   in (PlayerOneKalaha (nstones - 1), nstate)
   ) >>= updateScore
 passStones (PassStones idx nstones) = gameState (\state ->
-  let nstate = updateBowl idx (addStone (getBowls state !! idx)) state
+  let nstate = updateBowl (red idx) (addStone (getBowls state !! red idx)) state
   in (PassStones (idx+1) (nstones-1), nstate)
   ) >>= passStones
-passStones fallThrough = setOutput fallThrough -- Things we cannot handle just silently pass through
 
-updateScore :: MoveResult -> GameState MoveResult
+red :: Int -> Int
+red i = mod i 12
+
+updateScore :: PlayerOneKalaha -> GameState MoveResult
 updateScore (PlayerOneKalaha 0) = setOutput Ok
 updateScore (PlayerOneKalaha n) = gameState (\state ->
   let pOneScore = getScore One state + 1
   in (PassStones 6 (n -1), state { playerOneScore = pOneScore})
   ) >>= passStones
-updateScore fallThrough = setOutput fallThrough
 
 updateList :: Int -> a -> [a] -> [a]
 updateList _ _ [] = []
