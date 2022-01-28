@@ -43,6 +43,18 @@ publicMancalaTests = testGroup "Mancala Tests"
   , testCase "Moving the first bowl distributes the stones" $ do
       let (_, game) = doMove 0 Mancala.newGame
       [0, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4] @=? gameToList game
+
+  , testCase "Moving the second bowl distributes the stones" $ do
+      let (_, game) = doMove 1 Mancala.newGame
+      [4, 0, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4] @=? gameToList game
+  , testCaseSteps "Moving the third bowl" $ \step -> do
+      let (rs, game) = doMove 2 Mancala.newGame
+
+      step "distributes the stones accordingly"
+      [4, 4, 0, 5, 5, 5, 4, 4, 4, 4, 4, 4] @=? gameToList game
+
+      step "and increases the score of the first player by one"
+      1 @=? getScore One game 
   , testCase "Both players have 0 score in a new Mancala game" $ do
       0 @=? getScore One Mancala.newGame
       0 @=? getScore Two Mancala.newGame
@@ -64,4 +76,4 @@ bowlTests = testGroup "Bowl Tests"
   ]
 
 gameToList :: Mancala -> [Int]
-gameToList = (map getNumberOfStones) . getBowls
+gameToList = map getNumberOfStones . getBowls

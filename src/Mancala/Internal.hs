@@ -4,20 +4,25 @@ import Control.Monad
 import Control.Monad.State.Lazy
 import Mancala.Bowl
 
-newtype Mancala = MancalaImpl {
-  getBowls :: [Bowl]
+data Mancala = MancalaImpl {
+  getBowls :: [Bowl],
+  playerOneScore :: Int,
+  playerTwoScore :: Int
 } deriving (Eq, Show)
 
 newGame :: Mancala
-newGame = MancalaImpl (replicate 12 (Bowl 4))
+newGame = MancalaImpl (replicate 12 (Bowl 4)) 0 0
 
 updateBowl :: Int -> Bowl -> Mancala -> Mancala
-updateBowl i b m = MancalaImpl (updateList i b (getBowls m))
+updateBowl i b m = MancalaImpl (updateList i b (getBowls m)) 0 0
 
 type GameState a = State Mancala a
 
 gameState :: (Mancala -> (a, Mancala)) -> GameState a
 gameState = state
+
+setOutput :: a -> GameState a
+setOutput a = gameState $ \ s -> (a, s)
 
 data Player = One | Two deriving (Eq, Show)
 
@@ -25,14 +30,21 @@ getActivePlayer :: Mancala -> Player
 getActivePlayer _ = One
 
 getScore :: Player -> Mancala -> Int
-getScore _ _ = 0
+getScore One = playerOneScore
+getScore Two = playerTwoScore
 
-data MoveResult = GameAlreadyOver | CantMoveEmptyBowl
-  | PassStones Int Int  | Ok
+data MoveResult = GameAlreadyOver
+  | CantMoveEmptyBowl
+  | PassStones { idx :: Int, nstones :: Int }
+  | PlayerOneKalaha Int
+  | Ok
   deriving (Show, Eq)
 
 doMove :: Int -> Mancala -> (MoveResult, Mancala)
-doMove i m = runState (getMoveProcessor i) m
+doMove i = runState (getMoveProcessor i)
+
+getMoveProcessor :: Int -> GameState MoveResult
+getMoveProcessor i = doEmptyBowl i >>= passStones
 
 doEmptyBowl :: Int -> GameState MoveResult
 doEmptyBowl i = gameState $ \state ->
@@ -42,16 +54,24 @@ doEmptyBowl i = gameState $ \state ->
      else
        (PassStones (i + 1) nstones, updateBowl i emptyBowl state)
 
-getMoveProcessor :: Int -> GameState MoveResult
-getMoveProcessor i = (doEmptyBowl i) >>= passStones 
-
 passStones :: MoveResult -> GameState MoveResult
-passStones (PassStones _ 0) = gameState (\s -> (Ok, s))
-passStones (PassStones i n) = gameState (\state ->
-  let nstate = updateBowl i (addStone (getBowls state !! i)) state
-  in (PassStones (i + 1) (n - 1), nstate)
+passStones (PassStones _ 0) = setOutput Ok
+passStones (PassStones 5 nstones) = gameState (\state ->
+  let nstate = updateBowl 5 (addStone (getBowls state !! 5)) state
+  in (PlayerOneKalaha (nstones - 1), nstate)
+  ) >>= updateScore
+passStones (PassStones idx nstones) = gameState (\state ->
+  let nstate = updateBowl idx (addStone (getBowls state !! idx)) state
+  in (PassStones (idx+1) (nstones-1), nstate)
   ) >>= passStones
-passStones a = gameState (\ s -> (a, s))
+passStones fallThrough = setOutput fallThrough -- Things we cannot handle just silently pass through
+
+updateScore :: MoveResult -> GameState MoveResult
+updateScore (PlayerOneKalaha 0) = setOutput Ok
+updateScore (PlayerOneKalaha n) = gameState $ \state ->
+  let pOneScore = (getScore One state) + 1
+  in (PassStones 6 (n -1), state { playerOneScore = pOneScore})
+updateScore fallThrough = setOutput fallThrough
 
 updateList :: Int -> a -> [a] -> [a]
 updateList _ _ [] = []
