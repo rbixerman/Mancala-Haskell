@@ -14,7 +14,7 @@ newGame :: Mancala
 newGame = MancalaImpl (replicate 12 (Bowl 4)) 0 0
 
 updateBowl :: Int -> Bowl -> Mancala -> Mancala
-updateBowl i b m = MancalaImpl (updateList i b (getBowls m)) 0 0
+updateBowl i b m = m { getBowls = updateList i b (getBowls m) }
 
 type GameState a = State Mancala a
 
@@ -68,9 +68,10 @@ passStones fallThrough = setOutput fallThrough -- Things we cannot handle just s
 
 updateScore :: MoveResult -> GameState MoveResult
 updateScore (PlayerOneKalaha 0) = setOutput Ok
-updateScore (PlayerOneKalaha n) = gameState $ \state ->
-  let pOneScore = (getScore One state) + 1
+updateScore (PlayerOneKalaha n) = gameState (\state ->
+  let pOneScore = getScore One state + 1
   in (PassStones 6 (n -1), state { playerOneScore = pOneScore})
+  ) >>= passStones
 updateScore fallThrough = setOutput fallThrough
 
 updateList :: Int -> a -> [a] -> [a]

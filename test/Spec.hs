@@ -54,6 +54,14 @@ publicMancalaTests = testGroup "Mancala Tests"
       [4, 4, 0, 5, 5, 5, 4, 4, 4, 4, 4, 4] @=? gameToList game
 
       step "and increases the score of the first player by one"
+      1 @=? getScore One game
+  , testCaseSteps "Moving the fourth bowl" $ \step -> do
+      let (rs, game) = doMove 3 Mancala.newGame
+
+      step "distributes the stones accordingly"
+      [4, 4, 4, 0, 5, 5, 5, 4, 4, 4, 4, 4] @=? gameToList game
+
+      step "and increases the score of the first player by one"
       1 @=? getScore One game 
   , testCase "Both players have 0 score in a new Mancala game" $ do
       0 @=? getScore One Mancala.newGame
