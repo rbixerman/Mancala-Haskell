@@ -1,5 +1,5 @@
 module Playground where
-  
+
 import Control.Monad
 
 data Mancala
