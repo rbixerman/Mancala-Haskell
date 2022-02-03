@@ -1,81 +1,113 @@
 module Mancala (
   Mancala,
+  Player(..),
+  Bowl,
+  MoveResult(..),
   newGame,
-  getActivePlayer,
-  getBowls
+  mancalaBowls,
+  activePlayer,
+  playerOneScore,
+  playerTwoScore,
+  doMove,
+  isEmpty,
+  getNumberOfStones
   ) where
+
+
+import Control.Monad
+import Control.Monad.State.Lazy
 
 import Mancala.Internal
 
-{- What is considered part of the public API of a mancala game∷
+data MoveResult = CantMoveEmptyBowl | GameOver | NotYourTurn | Ok | KalahaEnd Player
+  deriving (Show, Eq)
 
-In any case, anyone (or anything) interfacing with the game is most likely
-interested in∷
-  - Getting the number of stones in each bowl (display/decision making)
-  - Getting the current score of each player  (display/decision making)
-  - Being able to know whose turn it is, or rather whether it is *our* turn
-  - Telling the game to do a move
-  - knowing the result of that move∷
-    - invalid moves generally just do nothing and don't change the internals
-      of the mancala black box, but some feedback on why the move is invalid can be nice
-    - valid moves result in an updated internal state, which in principle we don't
-      care about much either, but again feedback can be nice (for example, informing
-      the user they get to do another move, although this could be derived locally)
-  - knowing if the game has ended (this coincides with knowing whether anyone
-    has a valid move)
+data Message = Message Player Int Int | KalahaMessage Player Int
 
-  - It looks like we can use the state monad to tackle this; we have a finite
-    (but very large) set of states, and every state has 6/12/14 (depending on
-    what we want to handle as input) edges to other state nodes (possible their own),
-    with some output indicating the result of the move.
+data CaptureMessage = CaptureMessage Player Int Int Int
 
-    The idea would be that
-      doMove :: Int -> MancalaState -> (MoveResult, MancalaState)
-    by itself does not fit the state monad, but by partially applying we get
-      (doMove Int) :: MancalaState -> (MoveResult, MancalaState)
+type GameState a = State Mancala a
 
-    Bogus input would default to (doMove Int) = (,) InvalidMove
-    for non-bogus input, we would have to create this function dynamically
+gameState :: (Mancala -> (a, Mancala)) -> GameState a
+gameState = state
+doMove :: Int -> Mancala -> (MoveResult, Mancala)
+doMove i = runState $ getMoveProcessor i where idx = rem i 12
 
-    winning or terminal states should then have their own result as some GameAlreadyOver result,
-    to indicate that we should start querying the state for relevant info about the results
-    of the game, instead of trying to play more moves. When we are in a non-terminal state
-    this result should never occur and all results should be informative.
--}
+getMoveProcessor :: Int -> GameState MoveResult
+getMoveProcessor i = do
+    game <- get
+    let yourBowl = belongsTo (activePlayer game) i
+    let action | anySideEmpty game = cleanUp
+               | not yourBowl = pure NotYourTurn
+               | isBowlEmpty game i = pure CantMoveEmptyBowl
+               | otherwise = move i
+    action
 
+cleanUp :: GameState MoveResult
+cleanUp = modify addPlayerBowlsToScore >> pure GameOver
 
+addPlayerBowlsToScore :: Mancala -> Mancala
+addPlayerBowlsToScore m@(MancalaImpl bowls pOneOld pTwoOld _) =
+    m { mancalaBowls = emptyBowls
+      , playerOneScore = pOneOld + pOneSum
+      , playerTwoScore = pTwoOld + pTwoSum}
+  where
+    pOneSum = foldr ((+) . getNumberOfStones) 0 (take 6 bowls)
+    pTwoSum = foldr ((+) . getNumberOfStones) 0 (drop 6 bowls)
+    emptyBowls = replicate 12 emptyBowl
 
--- ideally we want this where Int is the bowl we want to move. In essence, our input
-{-doMove :: Int -> Mancala -> (MoveResult, Mancala)
-doMove = runState . pickMoveProcessor
+move :: Int -> GameState MoveResult
+move i = do
+    nstones <- doEmptyBowl i
+    moveResult <- passStones $ makeInitMessage i nstones
+    gameEnd <- gets anySideEmpty
+    if gameEnd
+      then cleanUp
+      else switchPlayers moveResult
 
-pickMoveProcessor :: Int -> GameState MoveResult
-pickMoveProcessor = undefined
--}
-{- On the other hand, we could also consider doMove as saying; bind this state processor
+doEmptyBowl :: Int -> GameState Int
+doEmptyBowl i = do
+    nstones <- gets (numberOfStonesInBowl i)
+    modify $ updateBowl i emptyBowl
+    pure nstones
 
-doMove2 :: Int -- ^
-  -> GameState a -- ^
-  -> GameState MoveResult
-doMove2 i = (>> pickMoveProcessor i)
--}
--- The benefit of this latter approach is that the game is essentially replayable
--- then when we return the GameState MoveResult;
--- I think in the public api, we forego the use of the state monad, and just do simple
--- query int mancala -> (MoveResult, Mancala)
--- then we can use the state monad internally
--- if there are any benefits, this should be clear while programming the internals
--- and then we can hopefully decide.
+makeInitMessage :: Int -> Int -> Message
+makeInitMessage idx stones = if idx < 6
+    then Message One idx stones
+    else Message Two idx stones
 
+passStones :: Message -> GameState MoveResult
+passStones (Message p i 0) = do
+    nstones <- gets (numberOfStonesInBowl i)
+    nstonesopp <- gets (numberOfStonesInBowl (getOppositeIndex i))
+    maybeCapture $ CaptureMessage p i nstones nstonesopp
+passStones (Message One 5 n)     = takeStone $ KalahaMessage One n
+passStones (Message Two 11 n)    = takeStone $ KalahaMessage Two n
+passStones (Message p i n)       = takeStone $ Message p (rem (i + 1) 12) n
+passStones (KalahaMessage p 0)   = pure $ KalahaEnd p
+passStones (KalahaMessage One n) = takeStone $ Message One 6 n
+passStones (KalahaMessage Two n) = takeStone $ Message Two 0 n
 
+takeStone :: Message -> GameState MoveResult
+takeStone (Message p i n) = do
+    modify $ incrementBowl i
+    passStones $ Message p i (n - 1)
+takeStone (KalahaMessage p n) = do
+    modify $ incrementScore p 1
+    passStones $ KalahaMessage p (n - 1)
 
+maybeCapture :: CaptureMessage -> GameState MoveResult
+maybeCapture (CaptureMessage _ _ _ 0) = pure Ok
+maybeCapture (CaptureMessage p i 1 n)
+    | belongsTo p i = do
+        modify (updateBowl i emptyBowl)
+        modify (updateBowl (getOppositeIndex i) emptyBowl)
+        modify (incrementScore p (n + 1))
+        pure Ok
+    | otherwise = pure Ok
+maybeCapture CaptureMessage {} = pure Ok
 
-
--- Random list rotate functions to have a 'circular' list, perhaps useful for
--- the bowls later.
-rotateRight :: [a] -> [a]
-rotateRight [] = []
-rotateRight (x:xs) = xs ++ [x]
-
-rotN :: [a] -> Int -> [a]
-rotN = (!!) . iterate rotateRight
+switchPlayers :: MoveResult -> GameState MoveResult
+switchPlayers m = case m of
+    Ok -> modify switchActivePlayer >> pure Ok
+    m -> pure m
