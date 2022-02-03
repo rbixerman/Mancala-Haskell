@@ -14,5 +14,8 @@ defaultBowl = Bowl 4
 emptyBowl :: Bowl
 emptyBowl = Bowl 0
 
+isEmpty :: Bowl -> Bool
+isEmpty = (emptyBowl==)
+
 takeAll :: Bowl -> Bowl
 takeAll _ = emptyBowl

@@ -256,7 +256,7 @@ sampleGameTest = testCaseSteps "Playing a sample game" $ \step -> do
   19 @=? getScore game34 One
   22 @=? getScore game34 Two
 
-  step "Moving the sixth bowl (final move)"
+  step "Moving the sixth bowl (final move) finishes the game"
   let (res, game35) = doMove 5 game34
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] @=? gameToList game35
   Two @=? getActivePlayer game35
@@ -264,6 +264,14 @@ sampleGameTest = testCaseSteps "Playing a sample game" $ \step -> do
   28 @=? getScore game35 Two
   GameOver @=? res
 
+  step "Trying to do another move does nothing"
+  let (res, game36) = doMove 0 game35
+  gameToList game35 @=? gameToList game36
+  getActivePlayer game35 @=? getActivePlayer game35
+  getScore game35 One @=? getScore game36 One
+  getScore game35 Two @=? getScore game36 Two
+  GameOver @=? res
+  
 gameSetupTests :: TestTree
 gameSetupTests = testGroup "Game Setup"
   [ testCase "Player one is the first player in a new Mancala game" $
